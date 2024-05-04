@@ -25,7 +25,7 @@ HEIGHT = 127 * UNIT
 window = pyglet.window.Window(WIDTH, HEIGHT)
 
 tick = pyglet.media.load("drumsticks.mp3", streaming=False)
-TICK_SPEED = 1
+TICK_SPEED = 2 # 5 might be better
 
 pyA = pyaudio.PyAudio()
 
@@ -57,12 +57,8 @@ class Setting:
         if idx in Setting.devices:
             print(Setting.devices[idx])
             Setting.has_settings = True
-
             # create Stream
             Setting.stream = Stream.get_stream(idx)
-            print(Setting.stream)
-
-            # NOTE: start game
 
         else: print("No device with this id")
 
@@ -109,39 +105,11 @@ class Midi_Notes:
     def __init__(self) -> None:
         self.mido = MidiFile("../read_midi/freude.mid") # TODO: load both tracks
         self.batch = pyglet.graphics.Batch()
-        # print(self.mido.tracks[0])
-        # for msg in self.mido.tracks[0]:
-            # get time from last msg -> note_off
-            # print(msg)
 
     def create_notes(self):
         """Create an array of notes, parsed from the .mid file"""
         track = self.mido.tracks[0] # TODO: let user select
 
-        # time = 0
-        # print(len(track))
-        # for i in range(0, len(track)):
-        #     msg = track[i]
-        # #     # print(msg)
-        #     if msg.type == 'note_on':
-        #         print(i, "on", msg.note, ":", msg.time)
-        #         on = msg
-        #         time += on.time
-        #         # get the next note_off-msg with the same note
-        #         for j in range(i, len(track)):
-        #             msg = track[j]
-        #             if msg.type == 'note_off' and msg.note == on.note:
-        #                 print(j, "off", msg.note, ":", msg.time)
-        #                 off = msg 
-        #                 time += off.time
-        #                 self.add_new_note(on, off, time)
-
-        #                 break # continue with previous iteration
-
-        # {note: 60, on: 103, off:161}
-        # create dict from msg: 
-            # if note_on  -> create new entry
-            # if note_off -> close last entry without off:value
         notes = {} # { <note>: { "on": 103, "off":161, "time":235 } } 
         time = 0 # time when first turned on
         idx = 0
@@ -161,17 +129,11 @@ class Midi_Notes:
             if msg.type == 'note_off':
                 off_msg = track[i]
                 for j in range(idx-1, -1, -1): # check the last created notes
-                    # print("j", notes[j])
                     if notes[j]["note"] == off_msg.note and "off" not in notes[j]:
                         notes[j]["off"] = off_msg.time # add an off key
                         time += off_msg.time
                         # print("!!", j, notes[j]) 
                         break
-                    # if "off" not in notes[j][off_msg.note]: # until it finds the same note, still open
-                        # time += off_msg.time
-                        # notes[off_msg.note]["off"] = off_msg.time # add an off key
-                        # print("turn off", notes[off_msg.note])
-                    #     break
 
         # create notes
         for n in notes:
@@ -192,16 +154,7 @@ class Midi_Notes:
         height = UNIT 
         color = (200, 0, 130)
         rect = pyglet.shapes.Rectangle(x, y, width, height, color, batch=self.batch)
-        # print("rect", rect.x, rect.y, rect.width, rect.height)
         Midi_Notes.notes.append(rect)
-        # y =  note_on.note * UNIT  # ↑  
-        # x =  (time + note_on.time) / UNIT # → 
-        # width = (note_off.time - note_on.time) / UNIT # diff btw on off & on time stamp
-        # height = UNIT 
-        # color = (200, 0, 130)
-        # rect = pyglet.shapes.Rectangle(x, y, width, height, color, batch=self.batch)
-        # print("rect", rect.x, rect.y, rect.width, rect.height)
-        # Midi_Notes.notes.append(rect)
 
     def play_note(self):
         pass
@@ -216,7 +169,8 @@ notes = Midi_Notes()
 CHUNK_SIZE = 1024  # Number of audio frames per buffer
 FORMAT = pyaudio.paInt16  # Audio format
 CHANNELS = 1  # Mono audio
-RATE = 44100  # Audio sampling rate (Hz)
+# RATE = 44100  # Audio sampling rate (Hz)
+RATE = 30000 
 
 class Sound_Wave:
     """Visualising the sound wave of the user-input"""
@@ -225,17 +179,75 @@ class Sound_Wave:
     wave_batch = pyglet.graphics.Batch()
     x = 0 # elongate with time
     default_y = HEIGHT / 2
+    # y = freq_in_hertz
+    prev_freq = 0
 
-    def get_user_input():
+    wave = []
+    rect = pyglet.shapes.Rectangle(x, prev_freq, UNIT, UNIT, (173, 186, 255), wave_batch)
+    # BUG: redraws this i think
+    # line = pyglet.shapes.Line(x, default_y, 0, default_y, width=UNIT,
+    #                               color=(198, 24, 232), batch=wave_batch)
+
+    hits = []
+    hit_color = (120, 255, 127, 80)
+
+    def on_collision():
+        """Check if the frequency matches the midi-notes"""
+        current_x = Sound_Wave.rect.x 
+        current_y = Sound_Wave.rect.y
+
+        for n in notes.notes:
+            if current_x > n.x and current_x < n.x + n.width + UNIT:
+                if current_y > n.y and current_y < n.y + n.height + UNIT: # ↑
+                    hit = pyglet.shapes.Rectangle(current_x-UNIT, current_y-UNIT, UNIT, UNIT,
+                                                Sound_Wave.hit_color, Sound_Wave.wave_batch)
+                    Sound_Wave.hits.append(hit)
+        Sound_Wave.wave_batch.draw()   
+
+    def update_wave(): # TEMP + kinda works
+        midi = Sound_Wave.map_freq_to_midi(Sound_Wave.get_input_frequency())
+        if midi != Sound_Wave.prev_freq: # only redraw, when frequency changes
+            Sound_Wave.rect.y = midi * UNIT 
+            Sound_Wave.rect.x += TICK_SPEED
+
+            rect = pyglet.shapes.Rectangle(Sound_Wave.rect.x, midi*UNIT, UNIT, UNIT,
+                                                (173, 186, 255, 80), Sound_Wave.wave_batch)
+            Sound_Wave.wave.append(rect)
+            # Sound_Wave.create_line(midi)
+            Sound_Wave.wave_batch.draw()
+        Sound_Wave.on_collision()
+
+    # def create_line(midi):
+    #     line = pyglet.shapes.Line(Sound_Wave.x, Sound_Wave.prev_freq, 0, midi, width=UNIT,
+    #                               color=(98, 24, 132), batch=Sound_Wave.wave_batch)
+    #     # print(line)
+    #     line.draw()
+    #     Sound_Wave.x += TICK_SPEED
+
+    def map_freq_to_midi(freq: float):
+        """Convert the frequency (in Hz) to a (midi) note.
+        See: https://newt.phys.unsw.edu.au/jw/notes.html
+        m  =  12*log2(fm/440 Hz) + 69"""
+        midi = 12*np.log2(freq/440) + 69 # freq: 954HZ = 82.233 -> round to midi
+        midi = round(midi, None)
+        print(midi)
+        return midi 
+
+    def get_input_frequency():
         # from audio-sample.py
         # Read audio data from stream
         data = Setting.stream.read(CHUNK_SIZE)
 
         # Convert audio data to numpy array
         data = np.frombuffer(data, dtype=np.int16)
-        
+
         # from dsp.ipynb
         data = data * np.hamming(len(data)) # ??
+
+        # TODO: filter out background noise
+            # -> if loud enough
+            # https://stackoverflow.com/a/25871132
+            # https://gist.github.com/PandaWhoCodes/9f3dc05faee761149842e43b56e6ee8c
 
         # from sof:365448 (kinda)
         fft_data = np.fft.rfft(data) # get only positive
@@ -245,34 +257,10 @@ class Sound_Wave:
         freqs = np.fft.fftfreq(len(fft_data)) # get all frequencies
         freq = freqs[peak] # find peak frequency
 
-        print("f", freq)
-
         # convert to herz (like sof:365448)
         freq_in_hertz = abs(freq * RATE)
-        print(freq_in_hertz)
-# see both:
-# https://stackoverflow.com/a/3695448
-# https://stackoverflow.com/a/2649540
-        # # Take the fft and square each value
-        # fftData=abs(np.fft.rfft(data))**2
-        # # find the maximum
-        # which = fftData[1:].argmax() + 1
-        # # use quadratic interpolation around the max
-        # if which != len(fftData)-1:
-        #     y0,y1,y2 = np.log(fftData[which-1:which+2:])
-        #     x1 = (y2 - y0) * .5 / (2 * y1 - y2 - y0)
-        #     # find the frequency and output it
-        #     thefreq = (which+x1)*RATE/CHUNK_SIZE
-        #     print (f"The freq is {thefreq} Hz.")
-        # else:
-        #     thefreq = which*RATE/CHUNK_SIZE
-        #     print(f"The freq is {thefreq} Hz.")
-
-        #     pass
-        # get input + print
-
-    def update_wave():
-        pass
+        # print(freq_in_hertz)
+        return freq_in_hertz
         
 
 """via: audio-sample.py
@@ -299,11 +287,12 @@ def on_draw():
     else:
     # Start the Game !!
     # TODO: give start timer
-        # notes.batch.draw() # TEMP
+        notes.batch.draw() 
+        Sound_Wave.update_wave()
         # Metronome.move_metronome(TICK_SPEED)
-
-        # TODO: display microphone input
-        Sound_Wave.get_user_input()
+        # Sound_Wave.get_input_frequency()
+        # Sound_Wave.map_freq_to_midi(945*2)
+        
 
 clock.schedule_interval(Metronome.tick, TICK_SPEED)
 # i.e. "tick" the Metronome in a resonable interval
@@ -315,27 +304,20 @@ def on_key_press(symbol, modifiers):
         window.close()
         Setting.stream.close()
         pyA.terminate()
-    else: # check if number selected
+    elif not Setting.has_settings: # check if number selected
         key = pyglet.window.key.symbol_string(symbol)
         if (re.match(r"_\d", key)):
             num = key.split("_")[1]
             Setting.open_audio_stream(int(num))
-    # print(str(pyglet.window.key.symbol_string(symbol)))
-    # _3 oder NUM_1
+        # _3 oder NUM_1
     
-
-
-# @window.event
-# def on_text(text):
-#     # only user for series of keystrokes
-#         print(text)
 
 
 # ----- RUN GAME ----- #
 if __name__ == '__main__':
     # init some stuff
     Setting.set_device_info()
-    # notes.create_notes() # TEMP
+    notes.create_notes()
     # print("notes", notes.notes)
     # run the game
     pyglet.app.run()
