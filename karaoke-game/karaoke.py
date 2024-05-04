@@ -3,6 +3,7 @@ import pyglet
 from pyglet import clock
 from mido import MidiFile, MidiTrack
 import re
+import numpy as np
 
 """
 - capture microphone audio
@@ -87,8 +88,9 @@ class Metronome:
     line = pyglet.shapes.Line(0, 0, 0, HEIGHT, width=UNIT, color=(200, 0, 0))
 
     def tick(self):
-        if Setting.has_settings:
-            tick.play()
+        pass # for now
+        # if Setting.has_settings:
+        #     tick.play()
 
     def move_metronome(delta_time):
         # ?? Right speed?
@@ -146,7 +148,7 @@ class Midi_Notes:
 
         for i in range(0, len(track)):
             msg = track[i]
-            print(i, msg)
+            # print(i, msg)
 
             # create an entry in the note dict, if a note "turns on"
             if msg.type == 'note_on':
@@ -163,7 +165,7 @@ class Midi_Notes:
                     if notes[j]["note"] == off_msg.note and "off" not in notes[j]:
                         notes[j]["off"] = off_msg.time # add an off key
                         time += off_msg.time
-                        print("!!", j, notes[j]) 
+                        # print("!!", j, notes[j]) 
                         break
                     # if "off" not in notes[j][off_msg.note]: # until it finds the same note, still open
                         # time += off_msg.time
@@ -208,6 +210,85 @@ notes = Midi_Notes()
 # DRAW MIDI-Files using mido see read_midi.py
 # note_on channel=0 note=62 velocity=72 time=0.058854166666666666
 
+
+# Set up audio stream
+# reduce chunk size and sampling rate for lower latency
+CHUNK_SIZE = 1024  # Number of audio frames per buffer
+FORMAT = pyaudio.paInt16  # Audio format
+CHANNELS = 1  # Mono audio
+RATE = 44100  # Audio sampling rate (Hz)
+
+class Sound_Wave:
+    """Visualising the sound wave of the user-input"""
+    # TODO: detect major frequency
+    # draw a point for "every" new input
+    wave_batch = pyglet.graphics.Batch()
+    x = 0 # elongate with time
+    default_y = HEIGHT / 2
+
+    def get_user_input():
+        # from audio-sample.py
+        # Read audio data from stream
+        data = Setting.stream.read(CHUNK_SIZE)
+
+        # Convert audio data to numpy array
+        data = np.frombuffer(data, dtype=np.int16)
+        
+        # from dsp.ipynb
+        data = data * np.hamming(len(data)) # ??
+
+        # from sof:365448 (kinda)
+        fft_data = np.fft.rfft(data) # get only positive
+        peak = np.argmax(np.abs(fft_data)) # get the peak coeffiecients
+
+        # TODO: only do this around max like sof:2649540
+        freqs = np.fft.fftfreq(len(fft_data)) # get all frequencies
+        freq = freqs[peak] # find peak frequency
+
+        print("f", freq)
+
+        # convert to herz (like sof:365448)
+        freq_in_hertz = abs(freq * RATE)
+        print(freq_in_hertz)
+# see both:
+# https://stackoverflow.com/a/3695448
+# https://stackoverflow.com/a/2649540
+        # # Take the fft and square each value
+        # fftData=abs(np.fft.rfft(data))**2
+        # # find the maximum
+        # which = fftData[1:].argmax() + 1
+        # # use quadratic interpolation around the max
+        # if which != len(fftData)-1:
+        #     y0,y1,y2 = np.log(fftData[which-1:which+2:])
+        #     x1 = (y2 - y0) * .5 / (2 * y1 - y2 - y0)
+        #     # find the frequency and output it
+        #     thefreq = (which+x1)*RATE/CHUNK_SIZE
+        #     print (f"The freq is {thefreq} Hz.")
+        # else:
+        #     thefreq = which*RATE/CHUNK_SIZE
+        #     print(f"The freq is {thefreq} Hz.")
+
+        #     pass
+        # get input + print
+
+    def update_wave():
+        pass
+        
+
+"""via: audio-sample.py
+line, = ax.plot(np.zeros(CHUNK_SIZE))
+
+# continuously capture and plot audio singal
+while True:
+    # Read audio data from stream
+    data = stream.read(CHUNK_SIZE)
+
+    # Convert audio data to numpy array
+    data = np.frombuffer(data, dtype=np.int16)
+    line.set_ydata(data)
+"""
+
+
 # ----- WINDOW INTERACTION ----- #
 @window.event
 def on_draw():
@@ -217,8 +298,12 @@ def on_draw():
         Setting.create_menu()
     else:
     # Start the Game !!
-        notes.batch.draw()
-        Metronome.move_metronome(TICK_SPEED)
+    # TODO: give start timer
+        # notes.batch.draw() # TEMP
+        # Metronome.move_metronome(TICK_SPEED)
+
+        # TODO: display microphone input
+        Sound_Wave.get_user_input()
 
 clock.schedule_interval(Metronome.tick, TICK_SPEED)
 # i.e. "tick" the Metronome in a resonable interval
@@ -228,6 +313,8 @@ clock.schedule_interval(Metronome.tick, TICK_SPEED)
 def on_key_press(symbol, modifiers):
     if symbol == pyglet.window.key.ESCAPE:
         window.close()
+        Setting.stream.close()
+        pyA.terminate()
     else: # check if number selected
         key = pyglet.window.key.symbol_string(symbol)
         if (re.match(r"_\d", key)):
@@ -244,13 +331,11 @@ def on_key_press(symbol, modifiers):
 #         print(text)
 
 
-
-
 # ----- RUN GAME ----- #
 if __name__ == '__main__':
     # init some stuff
     Setting.set_device_info()
-    notes.create_notes()
+    # notes.create_notes() # TEMP
     # print("notes", notes.notes)
     # run the game
     pyglet.app.run()
