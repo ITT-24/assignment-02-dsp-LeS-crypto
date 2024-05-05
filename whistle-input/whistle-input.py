@@ -1,7 +1,7 @@
 import numpy as np
 import pyaudio
 import pyglet
-import pynput
+from pynput.keyboard import Key, Controller
 import re
 
 """
@@ -15,16 +15,17 @@ for a downwards chirp."
 - generalize technique to other applications
     - pynput: trigger key presses (up/down) to nagivate in arbitrary GUI menus by whistling
 
-- [/] (3P) - upwards and downwards whistling are detected correctly and robustly
-- [x] (2P) - detection is robust against background noise 
-- [ ] (1P) - low latency between input and detection
-- [ ] (1P) - the pyglet test program works
-- [ ] (1P) - triggered key events work 
+- [?] (3P) - upwards and downwards whistling are detected correctly and robustly
+- [?] (2P) - detection is robust against background noise 
+- [x] (1P) - low latency between input and detection
+- [x] (1P) - the pyglet test program works
+- [x] (1P) - triggered key events work 
 """
 
 WIDTH = 500
 HEIGHT = 500 
 window = pyglet.window.Window(WIDTH, HEIGHT)
+key_label = pyglet.text.Label("Pressed:", x=10, y=HEIGHT-20)
 
 # Set up audio stream
 # reduce chunk size and sampling rate for lower latency
@@ -34,6 +35,8 @@ CHANNELS = 1  # Mono audio
 # RATE = 44100  # Audio sampling rate (Hz)
 RATE = 10000
 p = pyaudio.PyAudio()
+
+keyboard = Controller()
 
 class Stream:
     devices = {}
@@ -92,7 +95,6 @@ CHIRP_THRESHOLD = 500
 class Detector:
     prev_freq = 0 # default value
     chirps = []
-    counter = 0
 
     # TODO: make robuster
     # NOTE: chirp ↑ ~ 1969 to 3353 // chirp ↓ ~ 3372 to 1988 (diff off ~ 1000)
@@ -113,15 +115,16 @@ class Detector:
                         if diff > CHIRP_THRESHOLD:
                             print("↓", Detector.chirps, freq)
                             Menu.navigate_menu(0)
+                            Key_Trigger.press_down_key()
                     elif Detector.chirps[0] < freq: # ↑
                         diff = freq - Detector.chirps[0]
                         if diff > CHIRP_THRESHOLD:
                             print("↑", Detector.chirps, freq) 
                             Menu.navigate_menu(1)
+                            Key_Trigger.press_up_key()
+                            # sim keypress
                     print("...", Detector.chirps)
                     Detector.reset()
-
-                Detector.counter += 1
 
             else: # reset
                 Detector.reset()
@@ -132,7 +135,6 @@ class Detector:
             print("i", freq)
 
     def reset():
-        Detector.counter = 0
         Detector.chirps = []
         Detector.prev_freq = 0
     
@@ -153,17 +155,12 @@ class Menu:
 
     batch = pyglet.graphics.Batch()
 
-    # def __init__(self) -> None:
-    #     self.batch = pyglet.graphics.Batch()
-    #     pass
-
     def init_info():
         pass
 
     def init_menu():
         for i in range(0, Menu.length+1):
             Menu.create_menu_item(i)
-        # Menu.draw_menu()
 
     def create_menu_item(idx):
         x = Menu.width - 30
@@ -181,21 +178,35 @@ class Menu:
         Menu.batch.draw()
 
     def navigate_menu(direction):
+        print(direction)
         old = Menu.items[Menu.selected_id]
-        old.color = Menu.unselected
 
-        if direction == 0: # down
+        if direction == 1: # up
+            if Menu.selected_id != 1: # 0 is of screen (TODO: fix)
+                Menu.selected_id -= 1 # [0] is highest
+                Menu.update_colors(old)
+        elif direction == 0: # down
             if Menu.selected_id < Menu.length:
                 Menu.selected_id += 1
-        elif direction == 1: # up
-            if Menu.selected_id > 0:
-                Menu.selected_id -= 1
-        
-        # change selection color
+                Menu.update_colors(old)
+    
+
+    def update_colors(old):
+        old.color = Menu.unselected
         new = Menu.items[Menu.selected_id]
         new.color = Menu.selected
 
-    pass 
+
+class Key_Trigger:
+    """Triggers a key press"""
+
+    def press_up_key():
+        keyboard.press(Key.up)
+        keyboard.release(Key.up)
+
+    def press_down_key():
+        keyboard.press(Key.down)
+        keyboard.release(Key.down)
 
 
 # ----- WINDOW INTERACTION ----- #
@@ -206,13 +217,24 @@ def on_draw():
     if Stream.stream != None:
         Detector.find_chirps()
         Menu.draw_menu()
+        key_label.draw()
 
 
 @window.event
 def on_key_press(symbol, modifiers):
+    key = pyglet.window.key.symbol_string(symbol)
+
     if symbol == pyglet.window.key.ESCAPE:
         window.close()
-    key = pyglet.window.key.symbol_string(symbol)
+    # react to simulated key presses
+    elif symbol == pyglet.window.key.UP:
+        key_label.text = f"Pressed {key}"
+        # Menu.navigate_menu(1) # for debug
+    elif symbol == pyglet.window.key.DOWN:
+        key_label.text = f"Pressed {key}"
+        # Menu.navigate_menu(0) # for debug
+
+    # get audio index input
     if (re.match(r"_\d", key)):
         num = key.split("_")[1]
         Stream.open_audio_stream(int(num))
@@ -222,6 +244,5 @@ if __name__ == '__main__':
     # init some stuff
     Stream.set_device_info()
     Menu.init_menu()
-    # print("notes", notes.notes)
     # run the game
     pyglet.app.run()
