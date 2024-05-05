@@ -24,7 +24,7 @@ WIDTH = 100 * UNIT
 HEIGHT = 127 * UNIT 
 window = pyglet.window.Window(WIDTH, HEIGHT)
 
-tick = pyglet.media.load("drumsticks.mp3", streaming=False)
+# tick = pyglet.media.load("drumsticks.mp3", streaming=False)
 TICK_SPEED = 2 # 5 might be better
 
 pyA = pyaudio.PyAudio()
@@ -39,6 +39,8 @@ class Setting:
     has_settings = False
     stream = None
 
+    labels = []
+
     def set_device_info():
         info = pyA.get_host_api_info_by_index(0)
         num_devices = info.get('deviceCount')
@@ -48,10 +50,14 @@ class Setting:
             if (pyA.get_device_info_by_host_api_device_index(0, i).get('maxInputChannels')) > 0:
                 d = pyA.get_device_info_by_host_api_device_index(0, i).get('name')
                 Setting.devices[i] = d
+        Setting.init_info()
     
     def create_menu(): # TODO create formatted document to display possible devices
-        settings.text = str(Setting.devices)
-        settings.draw()
+        # settings.text = str(Setting.devices)
+        # settings.draw()
+        for l in Setting.labels:
+            print(l)
+            l.draw()
 
     def open_audio_stream(idx:int):
         if idx in Setting.devices:
@@ -59,9 +65,19 @@ class Setting:
             Setting.has_settings = True
             # create Stream
             Setting.stream = Stream.get_stream(idx)
-
         else: print("No device with this id")
 
+    def init_info():
+        """Create an info text"""
+        batch = pyglet.graphics.Batch()
+        info = pyglet.text.Label("Select the id of your prefered audio device:", 
+                                 x=10, y=HEIGHT-20, batch=batch)
+        Setting.labels.append(info)
+        for idx in Setting.devices:
+            info_text = f"ID: {idx} - {Setting.devices[idx]}"
+            label = pyglet.text.Label(info_text, x=10, y=HEIGHT-(idx*20)-40, batch=batch)
+            Setting.labels.append(label)
+    
 class Stream:
     # Set up audio stream
     # reduce chunk size and sampling rate for lower latency

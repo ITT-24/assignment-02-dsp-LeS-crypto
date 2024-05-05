@@ -53,6 +53,8 @@ class Stream:
                 print(d)
                 Stream.devices[i] = d
 
+        Menu.init_info()
+
     def open_audio_stream(idx:int):
         if idx in Stream.devices:
             print(Stream.devices[idx])
@@ -154,9 +156,32 @@ class Menu:
     selected_id = 3
 
     batch = pyglet.graphics.Batch()
+    label_batch = pyglet.graphics.Batch()
+    labels = []
 
     def init_info():
-        pass
+        batch = pyglet.graphics.Batch()
+        info = pyglet.text.Label("Select the id of your prefered audio device:", 
+                                 x=10, y=HEIGHT-20, batch=batch)
+        Menu.labels.append(info)
+        for idx in Stream.devices:
+            info_text = f"ID: {idx} - {Stream.devices[idx]}"
+            label = pyglet.text.Label(info_text, x=10, y=HEIGHT-(idx*20)-40, batch=batch)
+            Menu.labels.append(label)
+
+        # info_text = "Select the id of your prefered audio device: <br>"
+        # for idx in Stream.devices:
+        #     info_text += f"<b>ID: {idx} <b> - {Stream.devices[idx]}<br>"
+        # # print("info", info_text)
+        # document = pyglet.text.decode_html(info_text)
+        # layout = pyglet.text.layout.TextLayout(document, x=WIDTH-10, y=HEIGHT-10, 
+        #                                     width=WIDTH, height=HEIGHT, batch=batch)
+        # Menu.labels.append(layout)
+        # NOTE: layout doesn't show up for some reason
+    
+    def draw_info():
+        for l in Menu.labels:
+            l.draw()
 
     def init_menu():
         for i in range(0, Menu.length+1):
@@ -218,6 +243,8 @@ def on_draw():
         Detector.find_chirps()
         Menu.draw_menu()
         key_label.draw()
+    else:
+        Menu.draw_info()
 
 
 @window.event
