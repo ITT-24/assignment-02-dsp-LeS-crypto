@@ -13,9 +13,15 @@ import numpy as np
 game in which players have to sing a certain (random, pre-defined, or MIDI) me-
 lody, or a game to train playing, singing, or whistling musical notes or intervals."
 
-3P - frequency detection works correctly and robustly
-2P - playable (fun) game
-1P - low latency btw input and detection
+- [/] (3P) - frequency detection works correctly and robustly
+- [/] (2P) - playable (fun) game
+- [?] (1P) - low latency btw input and detection
+
+https://timsainburg.com/noise-reduction-python.html
+https://github.com/timsainb/noisereduce/issues/44
+https://github.com/exeex/midi-visualization/blob/master/roll.py
+Visualize WAVE FILE: https://youtu.be/oSQTBq1fdTE?si=84wsqSnMRPZXcFKP
+
 """
 
 # ----- SET UP ----- 
@@ -40,6 +46,9 @@ class Setting:
     stream = None
 
     labels = []
+    songs = {0: "berge.mid", 1: "freude.mid"}
+    select_count = 0
+    notes = None
 
     def set_device_info():
         info = pyA.get_host_api_info_by_index(0)
@@ -56,13 +65,13 @@ class Setting:
         # settings.text = str(Setting.devices)
         # settings.draw()
         for l in Setting.labels:
-            print(l)
+            # print(l)
             l.draw()
 
     def open_audio_stream(idx:int):
         if idx in Setting.devices:
             print(Setting.devices[idx])
-            Setting.has_settings = True
+            # Setting.has_settings = True
             # create Stream
             Setting.stream = Stream.get_stream(idx)
         else: print("No device with this id")
@@ -70,13 +79,46 @@ class Setting:
     def init_info():
         """Create an info text"""
         batch = pyglet.graphics.Batch()
-        info = pyglet.text.Label("Select the id of your prefered audio device:", 
+        info = pyglet.text.Label("First select the id of your prefered audio device:", 
                                  x=10, y=HEIGHT-20, batch=batch)
         Setting.labels.append(info)
         for idx in Setting.devices:
             info_text = f"ID: {idx} - {Setting.devices[idx]}"
             label = pyglet.text.Label(info_text, x=10, y=HEIGHT-(idx*20)-40, batch=batch)
             Setting.labels.append(label)
+
+        song = pyglet.text.Label("Then select the song you want to sing:",
+                                 x=WIDTH/2, y=HEIGHT-20, batch=batch)
+        Setting.labels.append(song)
+        for idx in Setting.songs:
+            info_text = f"ID: {idx} - {Setting.songs[idx]}"
+            label = pyglet.text.Label(info_text, x=WIDTH/2, y=HEIGHT-(idx*20)-40, batch=batch)
+            Setting.labels.append(label)
+
+        start = pyglet.text.Label("", x=WIDTH/2, y=HEIGHT/2, anchor_x="center",batch=batch) # preload
+        Setting.labels.append(start)
+
+    def set_choice(idx:int):
+        if Setting.select_count == 0: # set audio device
+            Setting.open_audio_stream(idx)
+            Setting.hightlight_choice(idx, 1) # 0 = info
+            Setting.select_count += 1
+        else: # set song
+            track = Setting.songs[idx]
+            notes.create_notes(track)
+            Setting.hightlight_choice(idx, len(Setting.devices)+2)
+            Setting.start_game()
+            # Setting.has_settings = True
+
+    def hightlight_choice(idx:int, offset):
+        label = Setting.labels[idx+offset]
+        print("l", label)
+        label.color = (0, 255, 0)
+
+    def start_game():
+        Setting.labels[-1].text = 'Press "Enter" to start'
+
+        
     
 class Stream:
     # Set up audio stream
@@ -113,18 +155,20 @@ class Metronome:
 
 
 class Midi_Notes:
+    """Create a visualisation of the midi notes"""
     notes = []
     # https://www.twilio.com/en-us/blog/working-with-midi-data-in-python-using-mido
     # https://stackoverflow.com/questions/63105201/python-mido-how-to-get-note-starttime-stoptime-track-in-a-list
     # https://github.com/exeex/midi-visualization/tree/master
 
     def __init__(self) -> None:
-        self.mido = MidiFile("../read_midi/freude.mid") # TODO: load both tracks
+        # self.mido = MidiFile(f"../read_midi/{track_name}") 
         self.batch = pyglet.graphics.Batch()
 
-    def create_notes(self):
+    def create_notes(self, track_name:str):
         """Create an array of notes, parsed from the .mid file"""
-        track = self.mido.tracks[0] # TODO: let user select
+        mido = MidiFile(f"../read_midi/{track_name}")
+        track = mido.tracks[0]
 
         notes = {} # { <note>: { "on": 103, "off":161, "time":235 } } 
         time = 0 # time when first turned on
@@ -189,7 +233,7 @@ CHANNELS = 1  # Mono audio
 RATE = 30000 
 
 class Sound_Wave:
-    """Visualising the sound wave of the user-input"""
+    """Visualising the "sound wave" of the user-input"""
     # TODO: detect major frequency
     # draw a point for "every" new input
     wave_batch = pyglet.graphics.Batch()
@@ -277,21 +321,6 @@ class Sound_Wave:
         freq_in_hertz = abs(freq * RATE)
         # print(freq_in_hertz)
         return freq_in_hertz
-        
-
-"""via: audio-sample.py
-line, = ax.plot(np.zeros(CHUNK_SIZE))
-
-# continuously capture and plot audio singal
-while True:
-    # Read audio data from stream
-    data = stream.read(CHUNK_SIZE)
-
-    # Convert audio data to numpy array
-    data = np.frombuffer(data, dtype=np.int16)
-    line.set_ydata(data)
-"""
-
 
 # ----- WINDOW INTERACTION ----- #
 @window.event
@@ -300,10 +329,9 @@ def on_draw():
 
     if not Setting.has_settings:
         Setting.create_menu()
-    else:
-    # Start the Game !!
-    # TODO: give start timer
-        notes.batch.draw() 
+        
+    else: # Update the Game !!
+        notes.batch.draw()
         Sound_Wave.update_wave()
         # Metronome.move_metronome(TICK_SPEED)
         # Sound_Wave.get_input_frequency()
@@ -318,14 +346,16 @@ clock.schedule_interval(Metronome.tick, TICK_SPEED)
 def on_key_press(symbol, modifiers):
     if symbol == pyglet.window.key.ESCAPE:
         window.close()
-        Setting.stream.close()
         pyA.terminate()
     elif not Setting.has_settings: # check if number selected
         key = pyglet.window.key.symbol_string(symbol)
         if (re.match(r"_\d", key)):
-            num = key.split("_")[1]
-            Setting.open_audio_stream(int(num))
-        # _3 oder NUM_1
+            num = key.split("_")[1] # syntax: _3 oder NUM_1
+            Setting.set_choice(int(num))
+
+        elif symbol == pyglet.window.key.ENTER:
+            # start the game
+            Setting.has_settings = True
     
 
 
@@ -333,7 +363,7 @@ def on_key_press(symbol, modifiers):
 if __name__ == '__main__':
     # init some stuff
     Setting.set_device_info()
-    notes.create_notes()
+    # notes.create_notes() # moved
     # print("notes", notes.notes)
     # run the game
     pyglet.app.run()
