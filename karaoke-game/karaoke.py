@@ -26,7 +26,7 @@ Visualize WAVE FILE: https://youtu.be/oSQTBq1fdTE?si=84wsqSnMRPZXcFKP
 
 # ----- SET UP ----- 
 UNIT = 10 # of the coordinate system
-WIDTH = 100 * UNIT
+WIDTH = 300 * UNIT
 HEIGHT = 127 * UNIT 
 window = pyglet.window.Window(WIDTH, HEIGHT)
 
@@ -170,8 +170,8 @@ class Midi_Notes:
         mido = MidiFile(f"../read_midi/{track_name}")
         track = mido.tracks[0]
 
-        notes = {} # { <note>: { "on": 103, "off":161, "time":235 } } 
-        time = 0 # time when first turned on
+        notes = {} # form: { <note>: { "on": 103, "off":161, "time":235 } } 
+        time = 0 # track time
         idx = 0
 
         for i in range(0, len(track)):
@@ -180,7 +180,7 @@ class Midi_Notes:
 
             # create an entry in the note dict, if a note "turns on"
             if msg.type == 'note_on':
-                time += msg.time # ??
+                time += msg.time 
                 notes[idx] = {"note": msg.note, "time": time, "on": msg.time}
                 # print("turn on", idx, notes[idx])
                 idx += 1
@@ -205,7 +205,6 @@ class Midi_Notes:
     # for each note-on message, you have to find the corresponding note-off message, 
     # i.e., the next note-off message with the same note and channel.
 
-    # def add_new_note(self, note_on, note_off, time):
     def add_new_note(self, note:dict):
         """Define the location and size of a note"""
         y =  note["note"] * UNIT  # ↑  
@@ -215,22 +214,22 @@ class Midi_Notes:
         color = (200, 0, 130)
         rect = pyglet.shapes.Rectangle(x, y, width, height, color, batch=self.batch)
         Midi_Notes.notes.append(rect)
+        print("m",note["note"], "->", y)
 
     def play_note(self):
         pass
 
 notes = Midi_Notes()
 # DRAW MIDI-Files using mido see read_midi.py
-# note_on channel=0 note=62 velocity=72 time=0.058854166666666666
-
+# note_on: channel=0 note=62 velocity=72 time=0.058854166666666666
 
 # Set up audio stream
 # reduce chunk size and sampling rate for lower latency
 CHUNK_SIZE = 1024  # Number of audio frames per buffer
 FORMAT = pyaudio.paInt16  # Audio format
 CHANNELS = 1  # Mono audio
-# RATE = 44100  # Audio sampling rate (Hz)
-RATE = 30000 
+RATE = 30000 # 44100  # Audio sampling rate (Hz)
+VOLUME_TRESHOLD = 150
 
 class Sound_Wave:
     """Visualising the "sound wave" of the user-input"""
@@ -244,12 +243,9 @@ class Sound_Wave:
 
     wave = []
     rect = pyglet.shapes.Rectangle(x, prev_freq, UNIT, UNIT, (173, 186, 255), wave_batch)
-    # BUG: redraws this i think
-    # line = pyglet.shapes.Line(x, default_y, 0, default_y, width=UNIT,
-    #                               color=(198, 24, 232), batch=wave_batch)
 
     hits = []
-    hit_color = (120, 255, 127, 80)
+    hit_color = (120, 255, 127, 100)
 
     def on_collision():
         """Check if the frequency matches the midi-notes"""
@@ -257,44 +253,47 @@ class Sound_Wave:
         current_y = Sound_Wave.rect.y
 
         for n in notes.notes:
-            if current_x > n.x and current_x < n.x + n.width + UNIT:
+            if current_x > n.x and current_x < n.x + n.width + UNIT: # →
                 if current_y > n.y and current_y < n.y + n.height + UNIT: # ↑
-                    hit = pyglet.shapes.Rectangle(current_x-UNIT, current_y-UNIT, UNIT, UNIT,
+                    # draw a hit
+                    hit = pyglet.shapes.Rectangle(current_x, current_y, UNIT, UNIT,
                                                 Sound_Wave.hit_color, Sound_Wave.wave_batch)
                     Sound_Wave.hits.append(hit)
+            # TODO: doesn't work on all, but on some??
         Sound_Wave.wave_batch.draw()   
 
-    def update_wave(): # TEMP + kinda works
-        midi = Sound_Wave.map_freq_to_midi(Sound_Wave.get_input_frequency())
-        if midi != Sound_Wave.prev_freq: # only redraw, when frequency changes
-            Sound_Wave.rect.y = midi * UNIT 
+    def update_wave():
+        sound = Sound_Wave.get_input_frequency()
+
+        if sound["amp"] > VOLUME_TRESHOLD:
+            midi = Sound_Wave.map_freq_to_midi(sound["freq"])
+            color = (173, 186, 255)
+
+            Sound_Wave.rect.y = midi * UNIT # map to coordinates
+            print("?", midi, "->", Sound_Wave.rect.y)
             Sound_Wave.rect.x += TICK_SPEED
-
             rect = pyglet.shapes.Rectangle(Sound_Wave.rect.x, midi*UNIT, UNIT, UNIT,
-                                                (173, 186, 255, 80), Sound_Wave.wave_batch)
+                                            color, Sound_Wave.wave_batch)
             Sound_Wave.wave.append(rect)
-            # Sound_Wave.create_line(midi)
-            Sound_Wave.wave_batch.draw()
-        Sound_Wave.on_collision()
+            Sound_Wave.on_collision()
+            # draw sound + do collision
+            pass
+        else: # silence
+            Sound_Wave.rect.x += TICK_SPEED # advance time
 
-    # def create_line(midi):
-    #     line = pyglet.shapes.Line(Sound_Wave.x, Sound_Wave.prev_freq, 0, midi, width=UNIT,
-    #                               color=(98, 24, 132), batch=Sound_Wave.wave_batch)
-    #     # print(line)
-    #     line.draw()
-    #     Sound_Wave.x += TICK_SPEED
+        Sound_Wave.wave_batch.draw()
+
 
     def map_freq_to_midi(freq: float):
         """Convert the frequency (in Hz) to a (midi) note.
         See: https://newt.phys.unsw.edu.au/jw/notes.html
         m  =  12*log2(fm/440 Hz) + 69"""
         midi = 12*np.log2(freq/440) + 69 # freq: 954HZ = 82.233 -> round to midi
-        midi = round(midi, None)
-        print(midi)
+        print("!", freq, "->", midi)
+        # midi = round(midi)
         return midi 
 
-    def get_input_frequency():
-        # from audio-sample.py
+    def get_input_frequency() -> dict: # partially from audio-sample.py
         # Read audio data from stream
         data = Setting.stream.read(CHUNK_SIZE)
 
@@ -309,18 +308,25 @@ class Sound_Wave:
             # https://stackoverflow.com/a/25871132
             # https://gist.github.com/PandaWhoCodes/9f3dc05faee761149842e43b56e6ee8c
 
-        # from sof:365448 (kinda)
+        # find the amplitude -> if high enough continue to find frequency
+        # (see: https://stackoverflow.com/a/51436401 )
+        amp = sum(np.abs(data))/len(data)
+        print("amp", amp)
+
+        # (see https://stackoverflow.com/a/3695448) (kinda)
         fft_data = np.fft.rfft(data) # get only positive
         peak = np.argmax(np.abs(fft_data)) # get the peak coeffiecients
 
-        # TODO: only do this around max like sof:2649540
+        # TODO: only do this around max (see https://stackoverflow.com/a/2649540)
         freqs = np.fft.fftfreq(len(fft_data)) # get all frequencies
         freq = freqs[peak] # find peak frequency
 
-        # convert to herz (like sof:365448)
+        # convert to herz (see https://stackoverflow.com/a/3695448)
         freq_in_hertz = abs(freq * RATE)
-        # print(freq_in_hertz)
-        return freq_in_hertz
+        # else: freq_in_hertz = None
+
+        return {"freq": freq_in_hertz, "amp": amp}
+    
 
 # ----- WINDOW INTERACTION ----- #
 @window.event
@@ -329,7 +335,7 @@ def on_draw():
 
     if not Setting.has_settings:
         Setting.create_menu()
-        
+
     else: # Update the Game !!
         notes.batch.draw()
         Sound_Wave.update_wave()
