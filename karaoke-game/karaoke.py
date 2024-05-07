@@ -26,12 +26,12 @@ Visualize WAVE FILE: https://youtu.be/oSQTBq1fdTE?si=84wsqSnMRPZXcFKP
 
 # ----- SET UP ----- 
 UNIT = 10 # of the coordinate system
-WIDTH = 300 * UNIT
+WIDTH = 250 * UNIT
 HEIGHT = 127 * UNIT 
 window = pyglet.window.Window(WIDTH, HEIGHT)
 
 # tick = pyglet.media.load("drumsticks.mp3", streaming=False)
-TICK_SPEED = 2 # 5 might be better
+TICK_SPEED = 5 # 5 might be better
 
 pyA = pyaudio.PyAudio()
 
@@ -61,7 +61,7 @@ class Setting:
                 Setting.devices[i] = d
         Setting.init_info()
     
-    def create_menu(): # TODO create formatted document to display possible devices
+    def create_menu():
         # settings.text = str(Setting.devices)
         # settings.draw()
         for l in Setting.labels:
@@ -77,7 +77,7 @@ class Setting:
         else: print("No device with this id")
 
     def init_info():
-        """Create an info text"""
+        """Create an info text menu thing"""
         batch = pyglet.graphics.Batch()
         info = pyglet.text.Label("First select the id of your prefered audio device:", 
                                  x=10, y=HEIGHT-20, batch=batch)
@@ -118,7 +118,7 @@ class Setting:
     def start_game():
         Setting.labels[-1].text = 'Press "Enter" to start'
 
-        
+    
     
 class Stream:
     # Set up audio stream
@@ -126,7 +126,7 @@ class Stream:
     CHUNK_SIZE = 1024  # Number of audio frames per buffer
     FORMAT = pyaudio.paInt16  # Audio format
     CHANNELS = 1  # Mono audio
-    RATE = 44100  # Audio sampling rate (Hz)
+    RATE = 30000 # 44100  # Audio sampling rate (Hz)
 
     def get_stream(device_id:int) -> pyaudio.Stream:
         stream = pyA.open(format=Stream.FORMAT,
@@ -138,20 +138,18 @@ class Stream:
         return stream
 
 
-class Metronome:
-    line = pyglet.shapes.Line(0, 0, 0, HEIGHT, width=UNIT, color=(200, 0, 0))
+# class Metronome:
+#     line = pyglet.shapes.Line(0, 0, 0, HEIGHT, width=UNIT, color=(200, 0, 0))
 
-    def tick(self):
-        pass # for now
-        # if Setting.has_settings:
-        #     tick.play()
+#     def tick(self):
+#         pass # for now
+#         # if Setting.has_settings:
+#         #     tick.play()
 
-    def move_metronome(delta_time):
-        # ?? Right speed?
-        Metronome.line.x += UNIT * delta_time
-        Metronome.line.draw()
-
-
+#     def move_metronome(delta_time):
+#         # ?? Right speed?
+#         Metronome.line.x += UNIT * delta_time
+#         Metronome.line.draw()
 
 
 class Midi_Notes:
@@ -199,8 +197,6 @@ class Midi_Notes:
         for n in notes:
             self.add_new_note(notes[n])
 
-        # NOTE: might?? work (ヘ･_･)ヘ┳━┳ 
-
     # time = msg.time + msg.time + ...
     # for each note-on message, you have to find the corresponding note-off message, 
     # i.e., the next note-off message with the same note and channel.
@@ -220,16 +216,16 @@ class Midi_Notes:
         pass
 
 notes = Midi_Notes()
-# DRAW MIDI-Files using mido see read_midi.py
+# DRAW MIDI-Files using mido (see read_midi.py)
 # note_on: channel=0 note=62 velocity=72 time=0.058854166666666666
 
 # Set up audio stream
 # reduce chunk size and sampling rate for lower latency
-CHUNK_SIZE = 1024  # Number of audio frames per buffer
-FORMAT = pyaudio.paInt16  # Audio format
-CHANNELS = 1  # Mono audio
-RATE = 30000 # 44100  # Audio sampling rate (Hz)
-VOLUME_TRESHOLD = 150
+# CHUNK_SIZE = 1024  # Number of audio frames per buffer
+# FORMAT = pyaudio.paInt16  # Audio format
+# CHANNELS = 1  # Mono audio
+# RATE = 30000 # 44100  # Audio sampling rate (Hz)
+VOLUME_TRESHOLD = 50 # 50
 
 class Sound_Wave:
     """Visualising the "sound wave" of the user-input"""
@@ -245,7 +241,7 @@ class Sound_Wave:
     rect = pyglet.shapes.Rectangle(x, prev_freq, UNIT, UNIT, (173, 186, 255), wave_batch)
 
     hits = []
-    hit_color = (120, 255, 127, 100)
+    hit_color = (120, 255, 127, 130)
 
     def on_collision():
         """Check if the frequency matches the midi-notes"""
@@ -265,7 +261,7 @@ class Sound_Wave:
     def update_wave():
         sound = Sound_Wave.get_input_frequency()
 
-        if sound["amp"] > VOLUME_TRESHOLD:
+        if sound["amp"] > VOLUME_TRESHOLD: # only update if sound high enough
             midi = Sound_Wave.map_freq_to_midi(sound["freq"])
             color = (173, 186, 255)
 
@@ -287,15 +283,17 @@ class Sound_Wave:
     def map_freq_to_midi(freq: float):
         """Convert the frequency (in Hz) to a (midi) note.
         See: https://newt.phys.unsw.edu.au/jw/notes.html
-        m  =  12*log2(fm/440 Hz) + 69"""
+        m  =  12*log2(fm/440 Hz) + 69.
+        "Behaltet auch im Kopf, dass die doppelte Frequenz wieder die selbe (musikalische) Note ist."
+        """
         midi = 12*np.log2(freq/440) + 69 # freq: 954HZ = 82.233 -> round to midi
-        print("!", freq, "->", midi)
-        # midi = round(midi)
+        midi = round(midi)
+        print("!", freq , "hrz", "->", midi)
         return midi 
 
     def get_input_frequency() -> dict: # partially from audio-sample.py
         # Read audio data from stream
-        data = Setting.stream.read(CHUNK_SIZE)
+        data = Setting.stream.read(Stream.CHUNK_SIZE)
 
         # Convert audio data to numpy array
         data = np.frombuffer(data, dtype=np.int16)
@@ -303,29 +301,30 @@ class Sound_Wave:
         # from dsp.ipynb
         data = data * np.hamming(len(data)) # ??
 
-        # TODO: filter out background noise
-            # -> if loud enough
+        # ??: filter out background noise
             # https://stackoverflow.com/a/25871132
             # https://gist.github.com/PandaWhoCodes/9f3dc05faee761149842e43b56e6ee8c
 
-        # find the amplitude -> if high enough continue to find frequency
+        # find the amplitude -> if high enough continue to find frequency (see update_wave())
         # (see: https://stackoverflow.com/a/51436401 )
         amp = sum(np.abs(data))/len(data)
-        print("amp", amp)
+        # print("amp", amp)
 
         # (see https://stackoverflow.com/a/3695448) (kinda)
         fft_data = np.fft.rfft(data) # get only positive
         peak = np.argmax(np.abs(fft_data)) # get the peak coeffiecients
 
-        # TODO: only do this around max (see https://stackoverflow.com/a/2649540)
+        # (see https://stackoverflow.com/a/2649540)
         freqs = np.fft.fftfreq(len(fft_data)) # get all frequencies
         freq = freqs[peak] # find peak frequency
 
         # convert to herz (see https://stackoverflow.com/a/3695448)
-        freq_in_hertz = abs(freq * RATE)
-        # else: freq_in_hertz = None
+        freq_in_hertz = abs(freq * Stream.RATE)
 
         return {"freq": freq_in_hertz, "amp": amp}
+# Something is off -> frequency maps higher on screen than it is supposed to be
+    # don't know if frequency detection is off or
+    # mapping is wrong (shouldn't tho)
     
 
 # ----- WINDOW INTERACTION ----- #
@@ -339,13 +338,6 @@ def on_draw():
     else: # Update the Game !!
         notes.batch.draw()
         Sound_Wave.update_wave()
-        # Metronome.move_metronome(TICK_SPEED)
-        # Sound_Wave.get_input_frequency()
-        # Sound_Wave.map_freq_to_midi(945*2)
-        
-
-clock.schedule_interval(Metronome.tick, TICK_SPEED)
-# i.e. "tick" the Metronome in a resonable interval
 
 
 @window.event
@@ -369,7 +361,4 @@ def on_key_press(symbol, modifiers):
 if __name__ == '__main__':
     # init some stuff
     Setting.set_device_info()
-    # notes.create_notes() # moved
-    # print("notes", notes.notes)
-    # run the game
     pyglet.app.run()
