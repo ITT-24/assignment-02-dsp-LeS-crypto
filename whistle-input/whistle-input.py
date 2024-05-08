@@ -4,30 +4,14 @@ import pyglet
 from pynput.keyboard import Key, Controller
 import re
 
-"""
-- detect and react to whistled frequency chirps in real time
-    "Frequency chirps are signals that change their
-frequency over time, for example “ooouuuiii” for an upwards chirp and “iiiuuuooo”
-for a downwards chirp."
-- use chirps to navigate (up and down) a list
-    - pyglet: 2D application that displays stack of rects -> visuall selection
-    - whiste up = up movement
-- generalize technique to other applications
-    - pynput: trigger key presses (up/down) to nagivate in arbitrary GUI menus by whistling
-
-- [?] (3P) - upwards and downwards whistling are detected correctly and robustly
-- [?] (2P) - detection is robust against background noise 
-- [x] (1P) - low latency between input and detection
-- [x] (1P) - the pyglet test program works
-- [x] (1P) - triggered key events work 
-
-https://stackoverflow.com/questions/29387815/fft-amplitude-of-chirp-in-python
-"""
+# ----- SET UP ----- #
 
 WIDTH = 500
 HEIGHT = 500 
 window = pyglet.window.Window(WIDTH, HEIGHT)
 key_label = pyglet.text.Label("Pressed:", x=10, y=HEIGHT-20)
+
+keyboard = Controller()
 
 # Set up audio stream
 # reduce chunk size and sampling rate for lower latency
@@ -38,7 +22,14 @@ CHANNELS = 1  # Mono audio
 RATE = 10000
 p = pyaudio.PyAudio()
 
-keyboard = Controller()
+# Thresholds for frequency detection and processing
+THRESHOLD = 150
+CHIRP_LEN = 3
+CHIRP_THRESHOLD = 200
+VOLUME_THRESHOLD = 30
+
+
+# ----- DETECTION & INTERACTION ----- #
 
 class Stream:
     devices = {}
@@ -76,26 +67,21 @@ class Stream:
     
     def get_input_frequency(): # see: karaoke.py
         data = Stream.stream.read(CHUNK_SIZE)
-
-        # Convert audio data to numpy array
         data = np.frombuffer(data, dtype=np.int16)
+        data = data * np.hamming(len(data))
 
-        # from dsp.ipynb
-        data = data * np.hamming(len(data)) # ??
+        amp = sum(np.abs(data))/len(data)
 
-        fft_data = np.fft.fft(data) # get only positive
+        fft_data = np.fft.rfft(data) # get only 1 dimension -> seems to works bettern than fft in this case
         peak = np.argmax(np.abs(fft_data)) # get the peak coeffiecients
 
         freqs = np.fft.fftfreq(len(fft_data)) # get all frequencies
         freq = freqs[peak] # find peak frequency
 
         freq_in_hertz = abs(freq * RATE)
-        return round(freq_in_hertz)
+        return {"freq": round(freq_in_hertz), "amp": amp}
 
 
-THRESHOLD = 150
-CHIRP_LEN = 3
-CHIRP_THRESHOLD = 200
 class Detector:
     prev_freq = 0 # default value
     chirps = []
@@ -103,8 +89,13 @@ class Detector:
     # TODO: make robuster
     # NOTE: chirp ↑ ~ 1969 to 3353 // chirp ↓ ~ 3372 to 1988 (diff off ~ 1000)
     def find_chirps():
-        freq = Stream.get_input_frequency()
+        input = Stream.get_input_frequency()
+        freq = input["freq"]
+        amp = input["amp"]
         print(freq)
+
+        if amp < VOLUME_THRESHOLD:
+            Detector.reset()
 
         if Detector.prev_freq != 0:
             if freq > Detector.prev_freq + THRESHOLD or freq < Detector.prev_freq - THRESHOLD:
@@ -147,6 +138,7 @@ class Detector:
     # when change from "silence" -> save freq as previous
     # detect change in frequency -> difference needs to be above threshold
     # chirp = lower to higher or higher to lower
+
 
 class Menu:
     """A dummy menu"""
@@ -237,7 +229,8 @@ class Key_Trigger:
         keyboard.release(Key.down)
 
 
-# ----- WINDOW INTERACTION ----- #
+# ----- PYGLET WINDOW ----- #
+
 @window.event
 def on_draw():
     window.clear()
@@ -269,7 +262,9 @@ def on_key_press(symbol, modifiers):
         num = key.split("_")[1]
         Stream.open_audio_stream(int(num))
 
-# ----- RUN GAME ----- #
+
+# ----- RUN APPLICATION ----- #
+
 if __name__ == '__main__':
     # init some stuff
     Stream.set_device_info()
