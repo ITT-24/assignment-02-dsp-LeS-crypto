@@ -319,7 +319,7 @@ class Sound_Wave:
         # print("amp", amp)
 
         # (see https://stackoverflow.com/a/3695448) (kinda)
-        fft_data = np.fft.rfft(data) # get only positive
+        fft_data = np.fft.fft(data)
         peak = np.argmax(np.abs(fft_data)) # get the peak coeffiecients
 
         # (see https://stackoverflow.com/a/2649540)
