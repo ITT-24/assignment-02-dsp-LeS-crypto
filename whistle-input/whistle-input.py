@@ -20,6 +20,8 @@ for a downwards chirp."
 - [x] (1P) - low latency between input and detection
 - [x] (1P) - the pyglet test program works
 - [x] (1P) - triggered key events work 
+
+https://stackoverflow.com/questions/29387815/fft-amplitude-of-chirp-in-python
 """
 
 WIDTH = 500
@@ -81,7 +83,7 @@ class Stream:
         # from dsp.ipynb
         data = data * np.hamming(len(data)) # ??
 
-        fft_data = np.fft.rfft(data) # get only positive
+        fft_data = np.fft.fft(data) # get only positive
         peak = np.argmax(np.abs(fft_data)) # get the peak coeffiecients
 
         freqs = np.fft.fftfreq(len(fft_data)) # get all frequencies
@@ -93,7 +95,7 @@ class Stream:
 
 THRESHOLD = 150
 CHIRP_LEN = 3
-CHIRP_THRESHOLD = 500
+CHIRP_THRESHOLD = 200
 class Detector:
     prev_freq = 0 # default value
     chirps = []
@@ -102,6 +104,7 @@ class Detector:
     # NOTE: chirp ↑ ~ 1969 to 3353 // chirp ↓ ~ 3372 to 1988 (diff off ~ 1000)
     def find_chirps():
         freq = Stream.get_input_frequency()
+        print(freq)
 
         if Detector.prev_freq != 0:
             if freq > Detector.prev_freq + THRESHOLD or freq < Detector.prev_freq - THRESHOLD:
