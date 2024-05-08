@@ -26,9 +26,14 @@ Visualize WAVE FILE: https://youtu.be/oSQTBq1fdTE?si=84wsqSnMRPZXcFKP
 
 # ----- SET UP ----- 
 UNIT = 10 # of the coordinate system
-WIDTH = 250 * UNIT
+WIDTH = 200 * UNIT
 HEIGHT = 127 * UNIT 
 window = pyglet.window.Window(WIDTH, HEIGHT)
+
+# Colors
+HIT_COLOR = (0, 255, 0) # green
+MIDI_COLOR = (200, 0, 130) # pink
+WAVE_COLOR = (173, 186, 255) # blueish
 
 # tick = pyglet.media.load("drumsticks.mp3", streaming=False)
 TICK_SPEED = 5 # 5 might be better
@@ -49,6 +54,8 @@ class Setting:
     songs = {0: "berge.mid", 1: "freude.mid"}
     select_count = 0
     notes = None
+
+    selected_track = None
 
     def set_device_info():
         info = pyA.get_host_api_info_by_index(0)
@@ -80,11 +87,11 @@ class Setting:
         """Create an info text menu thing"""
         batch = pyglet.graphics.Batch()
         info = pyglet.text.Label("First select the id of your prefered audio device:", 
-                                 x=10, y=HEIGHT-20, batch=batch)
+                                 x=UNIT, y=HEIGHT-20, batch=batch)
         Setting.labels.append(info)
         for idx in Setting.devices:
             info_text = f"ID: {idx} - {Setting.devices[idx]}"
-            label = pyglet.text.Label(info_text, x=10, y=HEIGHT-(idx*20)-40, batch=batch)
+            label = pyglet.text.Label(info_text, x=UNIT, y=HEIGHT-(idx*20)-40, batch=batch)
             Setting.labels.append(label)
 
         song = pyglet.text.Label("Then select the song you want to sing:",
@@ -104,8 +111,8 @@ class Setting:
             Setting.hightlight_choice(idx, 1) # 0 = info
             Setting.select_count += 1
         else: # set song
-            track = Setting.songs[idx]
-            notes.create_notes(track)
+            Setting.selected_track = Setting.songs[idx]
+            Notes.create_notes(Setting.selected_track)
             Setting.hightlight_choice(idx, len(Setting.devices)+2)
             Setting.start_game()
             # Setting.has_settings = True
@@ -113,11 +120,16 @@ class Setting:
     def hightlight_choice(idx:int, offset):
         label = Setting.labels[idx+offset]
         print("l", label)
-        label.color = (0, 255, 0)
+        label.color = HIT_COLOR
 
     def start_game():
         Setting.labels[-1].text = 'Press "Enter" to start'
 
+    def get_end_label() -> pyglet.text.Label:
+        points = len(Sound_Wave.hits)
+        end_text = f"{points} point! Good job :D ... now press ESC to quit."
+        return pyglet.text.Label(end_text, x=WIDTH/2, y=HEIGHT/2, 
+                                      anchor_x="center", anchor_y="center")
     
     
 class Stream:
@@ -138,26 +150,10 @@ class Stream:
         return stream
 
 
-# class Metronome:
-#     line = pyglet.shapes.Line(0, 0, 0, HEIGHT, width=UNIT, color=(200, 0, 0))
-
-#     def tick(self):
-#         pass # for now
-#         # if Setting.has_settings:
-#         #     tick.play()
-
-#     def move_metronome(delta_time):
-#         # ?? Right speed?
-#         Metronome.line.x += UNIT * delta_time
-#         Metronome.line.draw()
-
-
 class Midi_Notes:
     """Create a visualisation of the midi notes"""
-    notes = []
-    # https://www.twilio.com/en-us/blog/working-with-midi-data-in-python-using-mido
-    # https://stackoverflow.com/questions/63105201/python-mido-how-to-get-note-starttime-stoptime-track-in-a-list
-    # https://github.com/exeex/midi-visualization/tree/master
+    notes = {} # form: { <note>: { "on": 103, "off":161, "time":235 } }
+    game_notes = []
 
     def __init__(self) -> None:
         # self.mido = MidiFile(f"../read_midi/{track_name}") 
@@ -166,20 +162,18 @@ class Midi_Notes:
     def create_notes(self, track_name:str):
         """Create an array of notes, parsed from the .mid file"""
         mido = MidiFile(f"../read_midi/{track_name}")
+        # -> note_on: channel=0 note=62 velocity=72 time=0.058854166666666666
         track = mido.tracks[0]
-
-        notes = {} # form: { <note>: { "on": 103, "off":161, "time":235 } } 
         time = 0 # track time
         idx = 0
 
         for i in range(0, len(track)):
             msg = track[i]
-            # print(i, msg)
 
             # create an entry in the note dict, if a note "turns on"
             if msg.type == 'note_on':
                 time += msg.time 
-                notes[idx] = {"note": msg.note, "time": time, "on": msg.time}
+                Midi_Notes.notes[idx] = {"note": msg.note, "time": time, "on": msg.time}
                 # print("turn on", idx, notes[idx])
                 idx += 1
 
@@ -187,37 +181,35 @@ class Midi_Notes:
             if msg.type == 'note_off':
                 off_msg = track[i]
                 for j in range(idx-1, -1, -1): # check the last created notes
-                    if notes[j]["note"] == off_msg.note and "off" not in notes[j]:
-                        notes[j]["off"] = off_msg.time # add an off key
+                    if Midi_Notes.notes[j]["note"] == off_msg.note and "off" not in Midi_Notes.notes[j]:
+                        Midi_Notes.notes[j]["off"] = off_msg.time # add an off key
                         time += off_msg.time
                         # print("!!", j, notes[j]) 
                         break
 
         # create notes
-        for n in notes:
-            self.add_new_note(notes[n])
+        for n in Midi_Notes.notes:
+            self.add_new_note(Midi_Notes.notes[n])
 
     # time = msg.time + msg.time + ...
     # for each note-on message, you have to find the corresponding note-off message, 
     # i.e., the next note-off message with the same note and channel.
 
     def add_new_note(self, note:dict):
-        """Define the location and size of a note"""
-        y =  note["note"] * UNIT  # ↑  
+        """Define the location and size of a note"""  
         x =  note["time"] / UNIT # → # (note["time"] + note["on"]) / UNIT 
+        y =  note["note"] * UNIT  # ↑
         width = note["off"] / UNIT # (note["off"] - note["on"]) / UNIT # diff btw on off & on time stamp
         height = UNIT 
-        color = (200, 0, 130)
-        rect = pyglet.shapes.Rectangle(x, y, width, height, color, batch=self.batch)
-        Midi_Notes.notes.append(rect)
+        rect = pyglet.shapes.Rectangle(x, y, width, height, MIDI_COLOR, batch=self.batch)
+        Midi_Notes.game_notes.append(rect)
         print("m",note["note"], "->", y)
 
     def play_note(self):
+        # TODO:
         pass
 
-notes = Midi_Notes()
-# DRAW MIDI-Files using mido (see read_midi.py)
-# note_on: channel=0 note=62 velocity=72 time=0.058854166666666666
+Notes = Midi_Notes() # refactor?
 
 # Set up audio stream
 # reduce chunk size and sampling rate for lower latency
@@ -241,37 +233,53 @@ class Sound_Wave:
     rect = pyglet.shapes.Rectangle(x, prev_freq, UNIT, UNIT, (173, 186, 255), wave_batch)
 
     hits = []
-    hit_color = (120, 255, 127, 130)
+    full_accuracy = 255 #full
+    hit_color = (120, 255, 127, full_accuracy)
 
     def on_collision():
         """Check if the frequency matches the midi-notes"""
         current_x = Sound_Wave.rect.x 
         current_y = Sound_Wave.rect.y
 
-        for n in notes.notes:
-            if current_x > n.x and current_x < n.x + n.width + UNIT: # →
-                if current_y > n.y and current_y < n.y + n.height + UNIT: # ↑
-                    # draw a hit
+        # TODO get Midi_Note.notes.time ~= current_x ??
+            # ? current_x > .time and current_x < .time + .off 
+            # = bigger than start.time, but smaller than start.time + duration
+            # ?? .time = time turned on, Midi_Note.notes
+        # check if current_y / UNIT ~ Midi_Note.notes.note 
+        # TODO Score counter?
+        for n in Midi_Notes.notes:
+            midi = Midi_Notes.notes[n]
+            if current_x > midi["time"]/UNIT and current_x < (midi["time"] + midi["off"])/UNIT:
+                if current_y >= ((midi["note"]*UNIT)) and current_y < ((midi["note"]*UNIT)+UNIT):
+                    # # draw a hit
+                    # print(current_y <= ((midi["note"]+UNIT)*UNIT) and current_y >= ((midi["note"]-UNIT)*UNIT))
+                    # print(f"{((midi["note"]*UNIT))} > {current_y} < {((midi["note"]*UNIT)+UNIT)}")
+
+        # for n in Midi_Notes.game_notes:
+        #     if current_x + Sound_Wave.rect.width > n.x and current_x < n.x + n.width:
+        #         if current_y + Sound_Wave.rect.height > n.x and current_y < n.y + n.height:
+            # if current_x > n.x and current_x < n.x + n.width + UNIT: # →
+            #     if current_y > n.y and current_y < n.y + n.height + UNIT: # ↑
                     hit = pyglet.shapes.Rectangle(current_x, current_y, UNIT, UNIT,
-                                                Sound_Wave.hit_color, Sound_Wave.wave_batch)
+                                                    Sound_Wave.hit_color, Sound_Wave.wave_batch)
                     Sound_Wave.hits.append(hit)
-            # TODO: doesn't work on all, but on some??
+    
         Sound_Wave.wave_batch.draw()   
+    # IDEA: get time, then check if converted frequency close to note from midi
 
     def update_wave():
         sound = Sound_Wave.get_input_frequency()
 
         if sound["amp"] > VOLUME_TRESHOLD: # only update if sound high enough
             midi = Sound_Wave.map_freq_to_midi(sound["freq"])
-            color = (173, 186, 255)
-
             Sound_Wave.rect.y = midi * UNIT # map to coordinates
-            print("?", midi, "->", Sound_Wave.rect.y)
             Sound_Wave.rect.x += TICK_SPEED
             rect = pyglet.shapes.Rectangle(Sound_Wave.rect.x, midi*UNIT, UNIT, UNIT,
-                                            color, Sound_Wave.wave_batch)
+                                            WAVE_COLOR, Sound_Wave.wave_batch)
             Sound_Wave.wave.append(rect)
             Sound_Wave.on_collision()
+
+            # print("?", midi, "->", Sound_Wave.rect.y)
             # draw sound + do collision
             pass
         else: # silence
@@ -288,7 +296,7 @@ class Sound_Wave:
         """
         midi = 12*np.log2(freq/440) + 69 # freq: 954HZ = 82.233 -> round to midi
         midi = round(midi)
-        print("!", freq , "hrz", "->", midi)
+        # print("!", freq , "hrz", "->", midi)
         return midi 
 
     def get_input_frequency() -> dict: # partially from audio-sample.py
@@ -322,7 +330,8 @@ class Sound_Wave:
         freq_in_hertz = abs(freq * Stream.RATE)
 
         return {"freq": freq_in_hertz, "amp": amp}
-# Something is off -> frequency maps higher on screen than it is supposed to be
+# ??: is right
+# Something is off -> i think frequency maps higher on screen than it is supposed to be
     # don't know if frequency detection is off or
     # mapping is wrong (shouldn't tho)
     
@@ -336,8 +345,12 @@ def on_draw():
         Setting.create_menu()
 
     else: # Update the Game !!
-        notes.batch.draw()
-        Sound_Wave.update_wave()
+        if Sound_Wave.rect.x < WIDTH:
+            Notes.batch.draw()
+            Sound_Wave.update_wave()
+        else:
+            label = Setting.get_end_label()
+            label.draw()
 
 
 @window.event
