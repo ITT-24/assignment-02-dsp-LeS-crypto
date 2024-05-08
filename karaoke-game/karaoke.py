@@ -4,30 +4,13 @@ from mido import MidiFile
 import re
 import numpy as np
 
-"""
-- capture microphone audio
-- detect sound's major frequency in real time
-- create small audio-based game (e.g. karaoke)
-"For example, it could be a karaoke
-game in which players have to sing a certain (random, pre-defined, or MIDI) me-
-lody, or a game to train playing, singing, or whistling musical notes or intervals."
-
-- [/] (3P) - frequency detection works correctly and robustly
-- [/] (2P) - playable (fun) game
-- [?] (1P) - low latency btw input and detection
-
-https://timsainburg.com/noise-reduction-python.html
-https://github.com/timsainb/noisereduce/issues/44
-https://github.com/exeex/midi-visualization/blob/master/roll.py
-Visualize WAVE FILE: https://youtu.be/oSQTBq1fdTE?si=84wsqSnMRPZXcFKP
-
-"""
-
 # ----- SET UP ----- 
 UNIT = 10 # of the coordinate system
 WIDTH = 200 * UNIT
 HEIGHT = 127 * UNIT 
 window = pyglet.window.Window(WIDTH, HEIGHT)
+LAYOUT_OFFSET = 40
+LINE_HEIGHT = 20
 
 # Colors
 HIT_COLOR = (0, 255, 0) # green
@@ -88,7 +71,7 @@ class Setting:
         Setting.labels.append(info)
         for idx in Setting.devices:
             info_text = f"ID: {idx} - {Setting.devices[idx]}"
-            label = pyglet.text.Label(info_text, x=UNIT, y=HEIGHT-(idx*20)-40, batch=batch)
+            label = pyglet.text.Label(info_text, x=UNIT, y=HEIGHT-(idx*LINE_HEIGHT)-LAYOUT_OFFSET, batch=batch)
             Setting.labels.append(label)
 
         song = pyglet.text.Label("Then select the song you want to sing:",
@@ -96,7 +79,7 @@ class Setting:
         Setting.labels.append(song)
         for idx in Setting.songs:
             info_text = f"ID: {idx} - {Setting.songs[idx]}"
-            label = pyglet.text.Label(info_text, x=WIDTH/2, y=HEIGHT-(idx*20)-40, batch=batch)
+            label = pyglet.text.Label(info_text, x=WIDTH/2, y=HEIGHT-(idx*LINE_HEIGHT)-LAYOUT_OFFSET, batch=batch)
             Setting.labels.append(label)
 
         start = pyglet.text.Label("", x=WIDTH/2, y=HEIGHT/2, anchor_x="center",batch=batch) # preload
@@ -211,10 +194,9 @@ class Sound_Wave:
     x = 0 # elongate with time
     y = 0
     default_y = HEIGHT / 2
-    rect = pyglet.shapes.Rectangle(x, y, UNIT, UNIT, (173, 186, 255), wave_batch)
+    rect = pyglet.shapes.Rectangle(x, y, UNIT, UNIT, WAVE_COLOR, wave_batch)
 
     hits = []
-    hit_color = (120, 255, 127)
 
     def on_collision():
         """Check if the frequency matches the midi-notes"""
@@ -230,7 +212,7 @@ class Sound_Wave:
                     # print(current_y <= ((midi["note"]+UNIT)*UNIT) and current_y >= ((midi["note"]-UNIT)*UNIT))
                     # print(f"{((midi["note"]*UNIT))} > {current_y} < {((midi["note"]*UNIT)+UNIT)}")
                     hit = pyglet.shapes.Rectangle(current_x, current_y, UNIT, UNIT,
-                                                    Sound_Wave.hit_color, Sound_Wave.wave_batch)
+                                                    HIT_COLOR, Sound_Wave.wave_batch)
                     Sound_Wave.hits.append(hit)
     
         Sound_Wave.wave_batch.draw()   
@@ -269,7 +251,7 @@ class Sound_Wave:
         data = np.frombuffer(data, dtype=np.int16)
 
         # from dsp.ipynb
-        data = data * np.hamming(len(data)) # ??
+        data = data * np.hamming(len(data))
 
         # find the amplitude -> later used in update_wave())
         # (see: https://stackoverflow.com/a/51436401 )
