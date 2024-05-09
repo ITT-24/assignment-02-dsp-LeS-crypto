@@ -5,7 +5,7 @@ import re
 import numpy as np
 
 # ----- SET UP ----- 
-UNIT = 10 # of the coordinate system
+UNIT = 10 # the basis of the coordinate system (for scaling)
 WIDTH = 200 * UNIT
 HEIGHT = 127 * UNIT 
 window = pyglet.window.Window(WIDTH, HEIGHT)
@@ -17,19 +17,16 @@ HIT_COLOR = (0, 255, 0) # green
 MIDI_COLOR = (200, 0, 130) # pink
 WAVE_COLOR = (173, 186, 255) # blueish
 
-TICK_SPEED = 5 # 5 might be better
-VOLUME_TRESHOLD = 50
+TICK_SPEED = 5 
+VOLUME_TRESHOLD = 30
 
 pyA = pyaudio.PyAudio()
-
-# get info about audio devices
-settings = pyglet.text.Label(text="<p>Test<p>", x=WIDTH/2, y=HEIGHT-40, anchor_x="center", anchor_y="center")
 
 # ----- SETTINGS, DETECTION & VISUALISATION  ----- #
 
 class Setting:
     """Select audio device"""
-    devices = {} # { 0: "Mic"}
+    devices = {} # e.g. { 0: "Mic"}
     has_settings = False
     stream = None
 
@@ -117,7 +114,7 @@ class Stream:
     CHUNK_SIZE = 1024  # Number of audio frames per buffer
     FORMAT = pyaudio.paInt16  # Audio format
     CHANNELS = 1  # Mono audio
-    RATE = 30000 # 44100  # Audio sampling rate (Hz)
+    RATE = 44100  # Audio sampling rate (Hz)
 
     def get_stream(device_id:int) -> pyaudio.Stream:
         stream = pyA.open(format=Stream.FORMAT,
