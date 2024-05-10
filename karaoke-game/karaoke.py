@@ -5,7 +5,7 @@ import re
 import numpy as np
 
 # ----- SET UP ----- 
-UNIT = 10 # the basis of the coordinate system (for scaling)
+UNIT = 5 # the basis of the coordinate system (for scaling)
 WIDTH = 200 * UNIT
 HEIGHT = 127 * UNIT 
 window = pyglet.window.Window(WIDTH, HEIGHT)
@@ -21,6 +21,13 @@ TICK_SPEED = 5
 VOLUME_TRESHOLD = 30
 
 pyA = pyaudio.PyAudio()
+
+# Set up audio stream
+# reduce chunk size and sampling rate for lower latency
+CHUNK_SIZE = 1024  # Number of audio frames per buffer
+FORMAT = pyaudio.paInt16  # Audio format
+CHANNELS = 1  # Mono audio
+RATE = 44100  # Audio sampling rate (Hz)
 
 # ----- SETTINGS, DETECTION & VISUALISATION  ----- #
 
@@ -84,10 +91,12 @@ class Setting:
 
     def set_choice(idx:int):
         if Setting.select_count == 0: # set audio device
+            print(f'set stream choice {idx}')
             Setting.open_audio_stream(idx)
             Setting.hightlight_choice(idx, 1) # 0 = info
             Setting.select_count += 1
         else: # set song
+            print(f'set song choice {idx}')
             Setting.selected_track = Setting.songs[idx]
             Notes.create_notes(Setting.selected_track)
             Setting.hightlight_choice(idx, len(Setting.devices)+2)
@@ -96,7 +105,7 @@ class Setting:
     def hightlight_choice(idx:int, offset):
         label = Setting.labels[idx+offset]
         print("l", label)
-        label.color = HIT_COLOR
+        #label.color = HIT_COLOR
 
     def start_game():
         Setting.labels[-1].text = 'Press "Enter" to start'
@@ -111,7 +120,7 @@ class Setting:
 class Stream:
     # Set up audio stream
     # reduce chunk size and sampling rate for lower latency
-    CHUNK_SIZE = 1024  # Number of audio frames per buffer
+    CHUNK_SIZE = 256  # Number of audio frames per buffer
     FORMAT = pyaudio.paInt16  # Audio format
     CHANNELS = 1  # Mono audio
     RATE = 44100  # Audio sampling rate (Hz)
@@ -123,6 +132,8 @@ class Stream:
                 input=True,
                 frames_per_buffer=Stream.CHUNK_SIZE,
                 input_device_index=device_id)
+        print('stream:', stream)
+        print(stream.read(Stream.CHUNK_SIZE))
         return stream
 
 
@@ -215,10 +226,18 @@ class Sound_Wave:
         Sound_Wave.wave_batch.draw()   
 
     def update_wave():
-        sound = Sound_Wave.get_input_frequency()
+        try:
+            sound = Sound_Wave.get_input_frequency()
+        except Exception as e:
+            print('oh noes' + str(e))
+            return
 
         if sound["amp"] > VOLUME_TRESHOLD: # only update if sound high enough
-            midi = Sound_Wave.map_freq_to_midi(sound["freq"])
+            try:
+                midi = Sound_Wave.map_freq_to_midi(sound["freq"])
+            except:
+                print('oh noes 2')
+                return
             Sound_Wave.rect.y = midi * UNIT # map to coordinates
             Sound_Wave.rect.x += TICK_SPEED # advance time
             rect = pyglet.shapes.Rectangle(Sound_Wave.rect.x, midi*UNIT, UNIT, UNIT,
@@ -235,14 +254,18 @@ class Sound_Wave:
     def map_freq_to_midi(freq: float):
         """Convert the frequency (in Hz) to a (midi) note. See: https://newt.phys.unsw.edu.au/jw/notes.html
         m  =  12*log2(fm/440 Hz) + 69."""
+        if freq == 0:
+            return 0
         midi = 12*np.log2(freq/440) + 69 # freq: 954HZ = 82.233 -> round to midi
         midi = round(midi)
+        print(freq, midi)
         # print("!", freq , "hrz", "->", midi)
         return midi 
 
     def get_input_frequency() -> dict: # partially from audio-sample.py
+        #global stream
         # Read audio data from stream
-        data = Setting.stream.read(Stream.CHUNK_SIZE)
+        data = Setting.stream.read(Stream.CHUNK_SIZE, exception_on_overflow=False)
 
         # Convert audio data to numpy array
         data = np.frombuffer(data, dtype=np.int16)
@@ -293,6 +316,9 @@ def on_key_press(symbol, modifiers):
         window.close()
         pyA.terminate()
     elif not Setting.has_settings: # check if number selected
+        #Setting.set_choice(6)
+        #Settings.has_settings = True
+        #return
         key = pyglet.window.key.symbol_string(symbol)
         if (re.match(r"_\d", key)):
             num = key.split("_")[1] # syntax: _3 oder NUM_1
